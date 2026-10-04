@@ -12,6 +12,7 @@ const LOOKS = ["Oversized Tee", "Overshirt", "Heavy Hoodie", "Cargo Set"];
 export default function TheWalk() {
   const sectionRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const triggerRef = useRef<ScrollTrigger | null>(null);
   const [active, setActive] = useState(0);
 
   useEffect(() => {
@@ -25,26 +26,38 @@ export default function TheWalk() {
     }
 
     const onReady = () => {
-      const st = ScrollTrigger.create({
+      triggerRef.current = ScrollTrigger.create({
         trigger: section,
         start: "top top",
         end: "+=250%",
         pin: true,
         scrub: 0.5,
+        invalidateOnRefresh: true,
         onUpdate: (self) => {
           video.currentTime = self.progress * video.duration;
           setActive(Math.min(LOOKS.length - 1, Math.floor(self.progress * LOOKS.length)));
         },
       });
-      return () => st.kill();
+      // This pin's spacer (250% of viewport) is added to the page late —
+      // only once video metadata resolves, which can land after other
+      // ScrollTriggers below it have already measured the page. Without
+      // this, everything after TheWalk ends up offset ("negative spacing",
+      // overlapping sections) because their start/end positions were
+      // calculated against a shorter document.
+      ScrollTrigger.refresh();
     };
 
     if (video.readyState >= 1) {
-      const cleanup = onReady();
-      return cleanup;
+      onReady();
+    } else {
+      video.addEventListener("loadedmetadata", onReady, { once: true });
     }
-    video.addEventListener("loadedmetadata", onReady, { once: true });
-    return () => video.removeEventListener("loadedmetadata", onReady);
+
+    return () => {
+      video.removeEventListener("loadedmetadata", onReady);
+      triggerRef.current?.kill();
+      triggerRef.current = null;
+    };
   }, []);
 
   return (
